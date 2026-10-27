@@ -1,10 +1,10 @@
 // ================= CONFIG =================
 // غيّر الروابط/المفاتيح هنا حسب الـ Postman Docs
 const NASA_APOD_URL = "https://api.nasa.gov/planetary/apod";
-const NASA_API_KEY = "DEMO_KEY"; // حط مفتاحك الخاص من https://api.nasa.gov
+const NASA_API_KEY = "Tjwrf7kjbHkf9PMjDHtpd6bmTM79WKDPtbjfwjQJ";
 const LAUNCHES_URL = "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=10";
 const PLANETS_URL = "https://api.le-systeme-solaire.net/rest/bodies/";
-const PLANETS_TOKEN = ""; // لو الـ API طلب توكن حطه هنا
+const PLANETS_TOKEN = "2db80998-ac1a-4065-af84-b85ee6f8291d";
 
 const $ = (id) => document.getElementById(id);
 const get = async (url, headers) => {
@@ -340,6 +340,7 @@ async function showPlanet(key) {
 async function loadComparison() {
   const keys = Object.keys(API_ID);
   const rows = await Promise.all(keys.map((k) => planetFetch(k).catch(() => null)));
+  if (rows.some((r) => !r)) return; // لو الـ API فشل سيب جدول الـ template زي ما هو
   const td = "px-4 md:px-6 py-3 md:py-4 text-slate-300 text-sm md:text-base whitespace-nowrap";
   $("planet-comparison-tbody").innerHTML = keys
     .map((k, i) => {
