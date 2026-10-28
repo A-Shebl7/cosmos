@@ -2,9 +2,8 @@
 // غيّر الروابط/المفاتيح هنا حسب الـ Postman Docs
 const NASA_APOD_URL = "https://api.nasa.gov/planetary/apod";
 const NASA_API_KEY = "Tjwrf7kjbHkf9PMjDHtpd6bmTM79WKDPtbjfwjQJ";
-const LAUNCHES_URL = "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=10";
-const PLANETS_URL = "https://api.le-systeme-solaire.net/rest/bodies/";
-const PLANETS_TOKEN = "2db80998-ac1a-4065-af84-b85ee6f8291d";
+const LAUNCHES_URL = "https://lldev.thespacedevs.com/2.3.0/launches/upcoming/?limit=10";
+const PLANETS_URL = "https://solar-system-opendata-proxy.vercel.app/api/planets";
 
 const $ = (id) => document.getElementById(id);
 const get = async (url, headers) => {
@@ -270,9 +269,7 @@ async function loadLaunches() {
 }
 
 // ================= 3) Planets (Solar System OpenData) =================
-// template planet ids -> API ids
-const API_ID = { mercury: "mercure", venus: "venus", earth: "terre", mars: "mars", jupiter: "jupiter", saturn: "saturne", uranus: "uranus", neptune: "neptune" };
-// ألوان/أنواع الجدول زي ما هي في الـ template
+// ألوان الجدول زي ما هي في الـ template (النوع بييجي من الـ API)
 const ROW = {
   mercury: ["#eab308", "bg-orange-500/50 text-orange-200", "Terrestrial"],
   venus: ["#f97316", "bg-orange-500/50 text-orange-200", "Terrestrial"],
@@ -285,9 +282,19 @@ const ROW = {
 };
 const AU = 149597870.7;
 const EARTH_MASS = 5.972e24;
-const cache = {};
-const planetFetch = (key) =>
-  (cache[key] ||= get(PLANETS_URL + API_ID[key], PLANETS_TOKEN ? { Authorization: "Bearer " + PLANETS_TOKEN } : undefined));
+let planetsPromise = null;
+// بيجيب كل الكواكب في طلب واحد من الـ proxy ويرجّعهم بمفتاح الاسم الإنجليزي
+function loadPlanetsData() {
+  if (!planetsPromise) {
+    planetsPromise = get(PLANETS_URL)
+      .then((data) => Object.fromEntries((data.bodies || []).map((b) => [b.englishName.toLowerCase(), b])))
+      .catch((err) => {
+        planetsPromise = null; // يسمح بإعادة المحاولة
+        throw err;
+      });
+  }
+  return planetsPromise;
+}
 
 const sup = (n) => String(n).replace(/[-0-9]/g, (c) => "⁻⁰¹²³⁴⁵⁶⁷⁸⁹"["-0123456789".indexOf(c)]);
 const km = (v) => (v >= 1e6 ? num(v / 1e6, 1) + "M km" : num(v, 0) + " km");
@@ -298,13 +305,12 @@ const volStr = (v) => (v ? `${num(v.volValue, 2)} × 10${sup(v.volExponent)} km�
 
 async function showPlanet(key) {
   try {
-    const p = await planetFetch(key);
+    const p = (await loadPlanetsData())[key];
+    if (!p) return;
     const name = p.englishName || key;
     $("planet-detail-image").src = `./images/${key}.png`;
     $("planet-detail-name").textContent = name;
-    $("planet-detail-description").textContent =
-      `${name} orbits the Sun every ${period(p.sideralOrbit)} at an average distance of ${num(p.semimajorAxis / AU, 2)} AU, ` +
-      `with a mean radius of ${num(p.meanRadius, 1)} km and ${p.moons ? p.moons.length : 0} known moon${p.moons?.length === 1 ? "" : "s"}.`;
+    $("planet-detail-description").textContent = p.description || "";
     $("planet-distance").textContent = km(p.semimajorAxis);
     $("planet-radius").textContent = num(p.meanRadius, 1) + " km";
     $("planet-mass").textContent = massStr(p.mass);
@@ -338,15 +344,22 @@ async function showPlanet(key) {
 }
 
 async function loadComparison() {
-  const keys = Object.keys(API_ID);
-  const rows = await Promise.all(keys.map((k) => planetFetch(k).catch(() => null)));
-  if (rows.some((r) => !r)) return; // لو الـ API فشل سيب جدول الـ template زي ما هو
+  let byKey;
+  try {
+    byKey = await loadPlanetsData();
+  } catch (err) {
+    console.error("Planets error:", err);
+    return; // سيب جدول الـ template زي ما هو
+  }
+  const keys = Object.keys(ROW);
+  const rows = keys.map((k) => byKey[k]);
+  if (rows.some((r) => !r)) return;
   const td = "px-4 md:px-6 py-3 md:py-4 text-slate-300 text-sm md:text-base whitespace-nowrap";
   $("planet-comparison-tbody").innerHTML = keys
     .map((k, i) => {
       const p = rows[i];
       if (!p) return "";
-      const [color, badge, type] = ROW[k];
+      const [color, badge] = ROW[k];
       return `
       <tr class="hover:bg-slate-800/30 transition-colors ${k === "earth" ? "bg-blue-500/5" : ""}">
         <td class="px-4 md:px-6 py-3 md:py-4 sticky left-0 bg-slate-800 z-10">
@@ -360,7 +373,7 @@ async function loadComparison() {
         <td class="${td}">${num((p.mass.massValue * Math.pow(10, p.mass.massExponent)) / EARTH_MASS, 3)}</td>
         <td class="${td}">${period(p.sideralOrbit)}</td>
         <td class="${td}">${p.moons ? p.moons.length : 0}</td>
-        <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap"><span class="px-2 py-1 rounded text-xs ${badge}">${type}</span></td>
+        <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap"><span class="px-2 py-1 rounded text-xs ${badge}">${p.type}</span></td>
       </tr>`;
     })
     .join("");
